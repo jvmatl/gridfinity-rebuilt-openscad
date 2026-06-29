@@ -1,0 +1,52 @@
+{
+  "bins": [
+    {
+      "filename": "subdiv_1x1x4u_ab",
+      "x": 1,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "label": "A"
+        },
+        {
+          "label": "B"
+        }
+      ]
+    },
+    {
+      "filename": "subdiv_1row_2col_4u_m3x25_m3x30",
+      "x": 2,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "label": "M3x25"
+        },
+        {
+          "label": "M3x30"
+        }
+      ]
+    },
+    {
+      "filename": "subdiv_1row_3col_4u_xyz_20_60_20",
+      "x": 3,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "weight": 20,
+          "label": "X"
+        },
+        {
+          "weight": 60,
+          "label": "Y"
+        },
+        {
+          "weight": 20,
+          "label": "Z"
+        }
+      ]
+    }
+  ]
+}

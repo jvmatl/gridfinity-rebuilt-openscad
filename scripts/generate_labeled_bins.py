@@ -24,7 +24,8 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "JSON may be a list or an object with a 'bins' list. Example bin: "
             "{'filename':'m3x12','label':'M3x12','x':1,'y':1,'z':4,"
-            "'stacking_lip':true,'magnet_holes':true}"
+            "'stacking_lip':true,'magnet_holes':true}. "
+            "Use 'columns' for one-row column subdivisions."
         ),
     )
     parser.add_argument("input", type=Path, help="JSON file containing bin descriptions")
@@ -92,17 +93,19 @@ def positive_int(item: dict[str, Any], key: str, default: int | None = None) -> 
     return value
 
 
+def label_to_lines(label: Any) -> list[str]:
+    if label is None:
+        return []
+    if isinstance(label, str):
+        return [] if label.strip() == "" else label.splitlines()
+    if isinstance(label, list) and all(isinstance(line, str) for line in label):
+        return [line for line in label if line.strip() != ""]
+    fail("'label' must be a string, list of strings, or null")
+
+
 def label_lines_and_surface(item: dict[str, Any]) -> tuple[list[str], bool]:
     has_label = "label" in item
-    label = item.get("label")
-    if label is None:
-        lines: list[str] = []
-    elif isinstance(label, str):
-        lines = [] if label.strip() == "" else label.splitlines()
-    elif isinstance(label, list) and all(isinstance(line, str) for line in label):
-        lines = [line for line in label if line.strip() != ""]
-    else:
-        fail("'label' must be a string, list of strings, or null")
+    lines = label_to_lines(item.get("label"))
 
     if "label_surface" in item:
         label_surface = bool_value(item, "label_surface", True)
@@ -111,6 +114,43 @@ def label_lines_and_surface(item: dict[str, Any]) -> tuple[list[str], bool]:
     if lines and not label_surface:
         fail("label text requires label_surface=true")
     return lines, label_surface
+
+
+def columns_and_surface(item: dict[str, Any]) -> tuple[list[float], list[list[str]], bool] | None:
+    if "columns" not in item:
+        return None
+    if "label" in item:
+        fail("use either top-level 'label' or 'columns', not both")
+    columns = item["columns"]
+    if not isinstance(columns, list) or not columns:
+        fail("'columns' must be a non-empty list")
+
+    weights: list[float] = []
+    labels: list[list[str]] = []
+    has_label_key = False
+    for index, column in enumerate(columns):
+        if isinstance(column, str):
+            weight = 1
+            label = column
+            has_label_key = True
+        elif isinstance(column, dict):
+            weight = column.get("weight", 1)
+            label = column.get("label")
+            has_label_key = has_label_key or "label" in column
+        else:
+            fail(f"column #{index + 1} must be an object or label string")
+        if not isinstance(weight, (int, float)) or weight <= 0:
+            fail(f"column #{index + 1} weight must be a positive number")
+        weights.append(weight)
+        labels.append(label_to_lines(label))
+
+    if "label_surface" in item:
+        label_surface = bool_value(item, "label_surface", True)
+    else:
+        label_surface = has_label_key
+    if any(labels) and not label_surface:
+        fail("column label text requires label_surface=true")
+    return weights, labels, label_surface
 
 
 def scad_string(value: str) -> str:
@@ -125,11 +165,21 @@ def scad_string_array(values: list[str]) -> str:
     return "[" + ",".join(scad_string(value) for value in values) + "]"
 
 
+def scad_number_array(values: list[float]) -> str:
+    return "[" + ",".join(str(value) for value in values) + "]"
+
+
+def scad_nested_string_array(values: list[list[str]]) -> str:
+    return "[" + ",".join(scad_string_array(value) for value in values) + "]"
+
+
 def wrapper_source(component: Path, cfg: dict[str, Any], part: str) -> str:
     return f"""use <{component.as_posix()}>
 
 labeled_gridfinity_bin(
     label_lines = {scad_string_array(cfg['label_lines'])},
+    compartment_label_lines = {scad_nested_string_array(cfg['compartment_label_lines'])},
+    column_weights = {scad_number_array(cfg['column_weights'])},
     part = {scad_string(part)},
     grid_size = [{cfg['x']}, {cfg['y']}],
     gridz = {cfg['z']},
@@ -179,10 +229,21 @@ def normalize_bin(item: dict[str, Any]) -> dict[str, Any]:
         x = positive_int(item, "x")
         y = positive_int(item, "y")
     z = positive_int(item, "z", item.get("gridz"))
-    label_lines, label_surface = label_lines_and_surface(item)
+
+    columns = columns_and_surface(item)
+    if columns is None:
+        label_lines, label_surface = label_lines_and_surface(item)
+        column_weights: list[float] = []
+        compartment_label_lines: list[list[str]] = []
+    else:
+        column_weights, compartment_label_lines, label_surface = columns
+        label_lines = []
+
     return {
         "filename": filename,
         "label_lines": label_lines,
+        "compartment_label_lines": compartment_label_lines,
+        "column_weights": column_weights,
         "label_surface": label_surface,
         "x": x,
         "y": y,
@@ -207,7 +268,11 @@ def generate_bin(
     text_stl = tmp_dir / f"{base}_text.stl"
     output = args.models_dir / f"{base}.3mf"
 
-    label_summary = " / ".join(cfg["label_lines"]) if cfg["label_lines"] else "no text"
+    if cfg["column_weights"]:
+        labels = [" / ".join(lines) if lines else "no text" for lines in cfg["compartment_label_lines"]]
+        label_summary = "columns=" + ",".join(labels)
+    else:
+        label_summary = " / ".join(cfg["label_lines"]) if cfg["label_lines"] else "no text"
     phase(index, total, base, f"start {cfg['x']}x{cfg['y']}x{cfg['z']}U, label={label_summary!r}")
 
     body_scad.write_text(wrapper_source(component, cfg, "body"))
@@ -215,7 +280,7 @@ def generate_bin(
     elapsed = run(["openscad", "-o", str(body_stl), str(body_scad)], args)
     phase(index, total, base, done_message("body STL", elapsed))
 
-    has_text = bool(cfg["label_lines"])
+    has_text = bool(cfg["label_lines"]) or any(cfg["compartment_label_lines"])
     if has_text:
         text_scad.write_text(wrapper_source(component, cfg, "text"))
         phase(index, total, base, "exporting text STL")
