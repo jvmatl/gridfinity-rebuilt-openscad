@@ -80,6 +80,30 @@
           "label": "M3x45"
         }
       ]
+    },
+    {
+      "filename": "m3_1x3x4u_washers_nuts_misc",
+      "x": 3,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "weight": 20,
+          "label": "Washers"
+        },
+        {
+          "weight": 25,
+          "label": "Nuts"
+        },
+        {
+          "weight": 20,
+          "label": "Nyloc"
+        },
+        {
+          "weight": 35,
+          "label": "Misc"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,29 @@
+{
+  "output": "m3_washers_nuts_mix_trial.3mf",
+  "bins": [
+    {
+      "filename": "m3_1x3x4u_washers_nuts_mix_trial",
+      "x": 3,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "weight": 20,
+          "label": "Washers"
+        },
+        {
+          "weight": 25,
+          "label": "Nuts"
+        },
+        {
+          "weight": 20,
+          "label": "Nyloc"
+        },
+        {
+          "weight": 35,
+          "label": "Misc"
+        }
+      ]
+    }
+  ]
+}
