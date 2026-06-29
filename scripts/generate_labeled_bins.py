@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 import time
@@ -16,6 +17,7 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_PACKAGER = SCRIPT_DIR / "make_orca_3mf.py"
 DEFAULT_TEMPLATE = SCRIPT_DIR / "orca_multimaterial_template.3mf"
+DEFAULT_OPENSCAD = shutil.which("openscad-nightly") or shutil.which("openscad") or "openscad"
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,9 +32,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("input", type=Path, help="JSON file containing bin descriptions")
     parser.add_argument("--models-dir", type=Path, default=Path("models"), help="Output directory for 3MF files")
+    parser.add_argument("--combined-output", type=Path, help="Write all bins from the input into one multi-object 3MF")
     parser.add_argument("--component", type=Path, default=Path("labeled_gridfinity_bin.scad"), help="Reusable OpenSCAD component")
     parser.add_argument("--packager", type=Path, default=DEFAULT_PACKAGER, help="make_orca_3mf.py path")
     parser.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE, help="Optional Orca 3MF template")
+    parser.add_argument("--openscad", default=DEFAULT_OPENSCAD, help="OpenSCAD executable to use; defaults to openscad-nightly when available")
     parser.add_argument("--tmp-root", type=Path, default=Path(tempfile.gettempdir()), help="Root directory for transient SCAD/STL files")
     parser.add_argument("--body-color", default="#FFFFFF", help="Filament 1 display color")
     parser.add_argument("--text-color", default="#000000", help="Filament 2 display color")
@@ -45,12 +49,18 @@ def fail(message: str) -> None:
     raise SystemExit(f"error: {message}")
 
 
-def load_bins(path: Path) -> list[dict[str, Any]]:
+def load_spec(path: Path) -> tuple[list[dict[str, Any]], Path | None]:
     try:
         data = json.loads(path.read_text())
     except json.JSONDecodeError as exc:
         fail(f"invalid JSON in {path}: {exc}")
+    combined_output = None
     if isinstance(data, dict):
+        raw_output = data.get("output", data.get("combined_output"))
+        if raw_output is not None:
+            if not isinstance(raw_output, str) or not raw_output.strip():
+                fail("top-level 'output' must be a non-empty string")
+            combined_output = Path(raw_output.strip())
         data = data.get("bins")
     if not isinstance(data, list):
         fail("input must be a JSON list or an object with a 'bins' list")
@@ -59,7 +69,7 @@ def load_bins(path: Path) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             fail(f"bin #{index + 1} must be an object")
         bins.append(item)
-    return bins
+    return bins, combined_output
 
 
 def safe_filename(value: Any) -> str:
@@ -218,6 +228,19 @@ def done_message(label: str, elapsed: float | None) -> str:
     return f"{label} done in {elapsed:.1f}s"
 
 
+def has_text(cfg: dict[str, Any]) -> bool:
+    return bool(cfg["label_lines"]) or any(cfg["compartment_label_lines"])
+
+
+def resolve_output_path(output: Path, models_dir: Path) -> Path:
+    path = output
+    if path.suffix.lower() != ".3mf":
+        path = path.with_suffix(".3mf")
+    if path.parent == Path("."):
+        path = models_dir / path
+    return path
+
+
 def normalize_bin(item: dict[str, Any]) -> dict[str, Any]:
     filename = safe_filename(item.get("filename", item.get("base_filename")))
     if "grid_size" in item:
@@ -253,20 +276,19 @@ def normalize_bin(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def generate_bin(
+def export_bin_meshes(
     cfg: dict[str, Any],
     args: argparse.Namespace,
     tmp_dir: Path,
     component: Path,
     index: int,
     total: int,
-) -> Path:
+) -> dict[str, Any]:
     base = cfg["filename"]
     body_scad = tmp_dir / f"{base}_body.scad"
     body_stl = tmp_dir / f"{base}_body.stl"
     text_scad = tmp_dir / f"{base}_text.scad"
     text_stl = tmp_dir / f"{base}_text.stl"
-    output = args.models_dir / f"{base}.3mf"
 
     if cfg["column_weights"]:
         labels = [" / ".join(lines) if lines else "no text" for lines in cfg["compartment_label_lines"]]
@@ -277,18 +299,26 @@ def generate_bin(
 
     body_scad.write_text(wrapper_source(component, cfg, "body"))
     phase(index, total, base, "exporting body STL")
-    elapsed = run(["openscad", "-o", str(body_stl), str(body_scad)], args)
+    elapsed = run([str(args.openscad), "-o", str(body_stl), str(body_scad)], args)
     phase(index, total, base, done_message("body STL", elapsed))
 
-    has_text = bool(cfg["label_lines"]) or any(cfg["compartment_label_lines"])
-    if has_text:
+    text_requested = has_text(cfg)
+    if text_requested:
         text_scad.write_text(wrapper_source(component, cfg, "text"))
         phase(index, total, base, "exporting text STL")
-        elapsed = run(["openscad", "-o", str(text_stl), str(text_scad)], args)
+        elapsed = run([str(args.openscad), "-o", str(text_stl), str(text_scad)], args)
         phase(index, total, base, done_message("text STL", elapsed))
     else:
         phase(index, total, base, "no text requested; skipping text STL")
 
+    return {"name": base, "body_stl": body_stl, "text_stl": text_stl if text_requested else None}
+
+
+def pack_single_bin(meshes: dict[str, Any], args: argparse.Namespace, index: int, total: int) -> Path:
+    base = meshes["name"]
+    output = args.models_dir / f"{base}.3mf"
+    body_part = f"{base}__filament_1_white_body"
+    text_part = f"{base}__filament_2_black_text"
     command = [
         "python3",
         str(args.packager),
@@ -296,21 +326,23 @@ def generate_bin(
         str(output),
         "--assembly-name",
         base,
+        "--object",
+        f"{base}={body_part}" + (f",{text_part}" if meshes["text_stl"] else ""),
         "--part",
-        f"filament_1_white_body={body_stl}",
+        f"{body_part}={meshes['body_stl']}",
         "--extruder",
-        "filament_1_white_body=1",
+        f"{body_part}=1",
         "--filament-color",
         f"1={args.body_color}",
     ]
     if args.template and args.template.exists():
         command.extend(["--template", str(args.template)])
-    if has_text:
+    if meshes["text_stl"]:
         command.extend([
             "--part",
-            f"filament_2_black_text={text_stl}",
+            f"{text_part}={meshes['text_stl']}",
             "--extruder",
-            "filament_2_black_text=2",
+            f"{text_part}=2",
             "--filament-color",
             f"2={args.text_color}",
         ])
@@ -320,6 +352,53 @@ def generate_bin(
         phase(index, total, base, f"3MF package command emitted -> {output}")
     else:
         phase(index, total, base, f"done in {elapsed:.1f}s -> {output}")
+    return output
+
+
+def pack_combined_bins(meshes_list: list[dict[str, Any]], args: argparse.Namespace, output: Path) -> Path:
+    output = resolve_output_path(output, args.models_dir)
+    command = [
+        "python3",
+        str(args.packager),
+        "--output",
+        str(output),
+        "--assembly-name",
+        output.stem,
+        "--filament-color",
+        f"1={args.body_color}",
+    ]
+    if args.template and args.template.exists():
+        command.extend(["--template", str(args.template)])
+
+    for meshes in meshes_list:
+        base = meshes["name"]
+        body_part = f"{base}__filament_1_white_body"
+        text_part = f"{base}__filament_2_black_text"
+        object_parts = [body_part]
+        command.extend([
+            "--part",
+            f"{body_part}={meshes['body_stl']}",
+            "--extruder",
+            f"{body_part}=1",
+        ])
+        if meshes["text_stl"]:
+            object_parts.append(text_part)
+            command.extend([
+                "--part",
+                f"{text_part}={meshes['text_stl']}",
+                "--extruder",
+                f"{text_part}=2",
+            ])
+        command.extend(["--object", f"{base}={','.join(object_parts)}"])
+    if any(meshes["text_stl"] for meshes in meshes_list):
+        command.extend(["--filament-color", f"2={args.text_color}"])
+
+    log(f"packaging combined 3MF with {len(meshes_list)} object(s): {output}")
+    elapsed = run(command, args)
+    if elapsed is None:
+        log(f"combined 3MF package command emitted -> {output}")
+    else:
+        log(f"combined 3MF done in {elapsed:.1f}s -> {output}")
     return output
 
 
@@ -333,16 +412,24 @@ def main() -> int:
     args.models_dir.mkdir(parents=True, exist_ok=True)
     args.tmp_root.mkdir(parents=True, exist_ok=True)
 
-    raw_bins = load_bins(args.input)
+    raw_bins, json_combined_output = load_spec(args.input)
     configs = [normalize_bin(item) for item in raw_bins]
+    combined_output = args.combined_output or json_combined_output
     tmp_dir = Path(tempfile.mkdtemp(prefix="gridfinity_bins_", dir=args.tmp_root))
     log(f"loaded {len(configs)} bin(s)")
     log(f"temporary files: {tmp_dir}")
 
-    outputs = [
-        generate_bin(cfg, args, tmp_dir, component, index, len(configs))
+    meshes_list = [
+        export_bin_meshes(cfg, args, tmp_dir, component, index, len(configs))
         for index, cfg in enumerate(configs, start=1)
     ]
+    if combined_output:
+        outputs = [pack_combined_bins(meshes_list, args, combined_output)]
+    else:
+        outputs = [
+            pack_single_bin(meshes, args, index, len(meshes_list))
+            for index, meshes in enumerate(meshes_list, start=1)
+        ]
     log("generated:")
     for output in outputs:
         log(f"  {output}")

@@ -1,0 +1,85 @@
+{
+  "output": "m3_hardware_bins.3mf",
+  "bins": [
+    {
+      "filename": "m3_1x3x4u_m3x4_to_m3x10",
+      "x": 3,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "label": "M3x4"
+        },
+        {
+          "label": "M3x5"
+        },
+        {
+          "label": "M3x6"
+        },
+        {
+          "label": "M3x8"
+        },
+        {
+          "label": "M3x10"
+        }
+      ]
+    },
+    {
+      "filename": "m3_1x3x4u_m3x12_to_m3x20",
+      "x": 3,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "label": "M3x12"
+        },
+        {
+          "label": "M3x14"
+        },
+        {
+          "label": "M3x16"
+        },
+        {
+          "label": "M3x18"
+        },
+        {
+          "label": "M3x20"
+        }
+      ]
+    },
+    {
+      "filename": "m3_1x3x4u_m3x25_to_m3x35",
+      "x": 3,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "weight": 30,
+          "label": "M3x25"
+        },
+        {
+          "weight": 30,
+          "label": "M3x30"
+        },
+        {
+          "weight": 40,
+          "label": "M3x35"
+        }
+      ]
+    },
+    {
+      "filename": "m3_1x3x4u_m3x40_m3x45",
+      "x": 3,
+      "y": 1,
+      "z": 4,
+      "columns": [
+        {
+          "label": "M3x40"
+        },
+        {
+          "label": "M3x45"
+        }
+      ]
+    }
+  ]
+}

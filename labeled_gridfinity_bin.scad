@@ -42,7 +42,7 @@ module labeled_gridfinity_bin(
     label_text_depth = 0.8,
     label_area_width = 30,
     label_area_height = 8.5,
-    label_char_width_ratio = 0.62,
+    label_char_width_ratio = 0.86,
     label_line_spacing = 1.15,
     label_tab_depth_margin = 2.5
 ) {
@@ -185,6 +185,11 @@ module _lgb_all_text_raw(
     label_lip_occlusion_depth
 ) {
     column_count = _lgb_column_count(column_weights);
+    shared_label_size = column_count == 1 ? undef : _lgb_fitted_compartment_label_size(
+        infill_size, compartment_label_lines, column_weights,
+        label_area_width, label_area_height, label_char_width_ratio,
+        label_line_spacing, label_tab_depth_margin, label_lip_occlusion_depth
+    );
     for (i = [0 : column_count - 1]) {
         lines = column_count == 1 ? label_lines : compartment_label_lines[i];
         if (_lgb_has_text(lines)) {
@@ -194,7 +199,7 @@ module _lgb_all_text_raw(
                 comp_center, comp_size, pocket_top_z, lines, label_font,
                 label_text_depth, label_area_width, label_area_height,
                 label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-                label_lip_occlusion_depth
+                label_lip_occlusion_depth, shared_label_size
             );
         }
     }
@@ -204,17 +209,17 @@ module _lgb_text_raw(
     comp_center, comp_size, pocket_top_z, label_lines, label_font,
     label_text_depth, label_area_width, label_area_height,
     label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-    label_lip_occlusion_depth
+    label_lip_occlusion_depth, label_size_override = undef
 ) {
     label_width = min(label_area_width, comp_size.x - 2 * label_tab_depth_margin);
     label_depth = min(
         label_area_height,
         TAB_SIZE.x - label_lip_occlusion_depth - 2 * label_tab_depth_margin
     );
-    label_size = _lgb_fitted_label_size(
+    label_size = is_undef(label_size_override) ? _lgb_fitted_label_size(
         label_lines, label_width, label_depth,
         label_char_width_ratio, label_line_spacing
-    );
+    ) : label_size_override;
     line_step = label_size * label_line_spacing;
     line_count = len(label_lines);
     label_center = [
@@ -274,6 +279,45 @@ function _lgb_has_compartment_text(compartment_label_lines, i = 0) =
     _lgb_has_text(compartment_label_lines[i]) || _lgb_has_compartment_text(compartment_label_lines, i + 1);
 function _lgb_has_any_text(label_lines, compartment_label_lines, column_weights) =
     _lgb_column_count(column_weights) == 1 ? _lgb_has_text(label_lines) : _lgb_has_compartment_text(compartment_label_lines);
+
+function _lgb_label_depth(label_area_height, label_tab_depth_margin, label_lip_occlusion_depth) =
+    min(
+        label_area_height,
+        TAB_SIZE.x - label_lip_occlusion_depth - 2 * label_tab_depth_margin
+    );
+
+function _lgb_compartment_label_width(infill_size, column_weights, i, label_area_width, label_tab_depth_margin) =
+    let(comp_size = _lgb_compartment_size(infill_size, column_weights, i))
+    min(label_area_width, comp_size.x - 2 * label_tab_depth_margin);
+
+function _lgb_min_compartment_label_width(infill_size, column_weights, label_area_width, label_tab_depth_margin, i = 0) =
+    i >= _lgb_column_count(column_weights) ? 1e9 :
+    min(
+        _lgb_compartment_label_width(infill_size, column_weights, i, label_area_width, label_tab_depth_margin),
+        _lgb_min_compartment_label_width(infill_size, column_weights, label_area_width, label_tab_depth_margin, i + 1)
+    );
+
+function _lgb_max_compartment_line_count(compartment_label_lines, i = 0) =
+    i >= len(compartment_label_lines) ? 1 :
+    max(len(compartment_label_lines[i]), _lgb_max_compartment_line_count(compartment_label_lines, i + 1));
+
+function _lgb_max_compartment_line_length(compartment_label_lines, i = 0) =
+    i >= len(compartment_label_lines) ? 1 :
+    max(_lgb_longest_label_line(compartment_label_lines[i]), _lgb_max_compartment_line_length(compartment_label_lines, i + 1));
+
+function _lgb_fitted_compartment_label_size(
+    infill_size, compartment_label_lines, column_weights,
+    label_area_width, label_area_height, label_char_width_ratio,
+    label_line_spacing, label_tab_depth_margin, label_lip_occlusion_depth
+) =
+    min(
+        _lgb_label_depth(label_area_height, label_tab_depth_margin, label_lip_occlusion_depth)
+            / max(_lgb_max_compartment_line_count(compartment_label_lines), 1)
+            / label_line_spacing,
+        _lgb_min_compartment_label_width(infill_size, column_weights, label_area_width, label_tab_depth_margin)
+            / max(_lgb_max_compartment_line_length(compartment_label_lines), 1)
+            / label_char_width_ratio
+    );
 
 function _lgb_longest_label_line(lines) =
     len(lines) == 0 ? 0 : max([for (line = lines) len(line)]);
