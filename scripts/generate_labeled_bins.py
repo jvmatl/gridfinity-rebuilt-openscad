@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
         epilog=(
             "JSON may be a list or an object with a 'bins' list. Example bin: "
             "{'filename':'m3x12','label':'M3x12','x':1,'y':1,'z':4,"
-            "'stacking_lip':true,'magnet_holes':true}. "
+            "'stacking_lip':true,'magnet_holes':true,'flush_front_wall':true}. "
             "Use 'columns' for one-row column subdivisions."
         ),
     )
@@ -195,7 +195,8 @@ labeled_gridfinity_bin(
     gridz = {cfg['z']},
     include_lip = {scad_bool(cfg['stacking_lip'])},
     label_surface = {scad_bool(cfg['label_surface'])},
-    magnet_holes = {scad_bool(cfg['magnet_holes'])}
+    magnet_holes = {scad_bool(cfg['magnet_holes'])},
+    flush_front_wall = {scad_bool(cfg['flush_front_wall'])}
 );
 """
 
@@ -273,6 +274,7 @@ def normalize_bin(item: dict[str, Any]) -> dict[str, Any]:
         "z": z,
         "stacking_lip": bool_value(item, "stacking_lip", True),
         "magnet_holes": bool_value(item, "magnet_holes", True),
+        "flush_front_wall": bool_value(item, "flush_front_wall", True),
     }
 
 

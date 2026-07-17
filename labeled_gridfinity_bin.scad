@@ -19,6 +19,7 @@ gridz = 4;
 include_lip = true;
 label_surface = true;
 magnet_holes = true;
+flush_front_wall = true;
 column_weights = [];
 compartment_label_lines = [];
 
@@ -38,10 +39,12 @@ module labeled_gridfinity_bin(
     label_surface = true,
     magnet_holes = true,
     screw_holes = false,
+    flush_front_wall = true,
     label_font = "Liberation Sans:style=Bold",
     label_text_depth = 0.8,
     label_area_width = 30,
     label_area_height = 8.5,
+    label_tab_style = 0,
     label_char_width_ratio = 0.86,
     label_line_spacing = 1.15,
     label_tab_depth_margin = 2.5
@@ -75,6 +78,7 @@ module labeled_gridfinity_bin(
     pocket_top_z = BASE_HEIGHT + max(labeled_bin[3], 0);
     // Center labels in the visible tab area; the stacking lip hides the wall-side strip.
     label_lip_occlusion_depth = include_lip ? STACKING_LIP_SIZE.x : 0;
+    front_wall_flush_inset = include_lip && flush_front_wall ? max(STACKING_LIP_SIZE.x - d_wall, 0) : 0;
     has_text = _lgb_has_any_text(label_lines, compartment_label_lines, column_weights);
 
     if (part == "body") {
@@ -83,7 +87,7 @@ module labeled_gridfinity_bin(
             label_lines, compartment_label_lines, column_weights, label_font,
             label_text_depth, label_area_width, label_area_height,
             label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-            label_lip_occlusion_depth
+            label_lip_occlusion_depth, label_tab_style, front_wall_flush_inset
         );
     } else if (part == "text") {
         if (has_text)
@@ -92,10 +96,10 @@ module labeled_gridfinity_bin(
             label_lines, compartment_label_lines, column_weights, label_font,
             label_text_depth, label_area_width, label_area_height,
             label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-            label_lip_occlusion_depth
+            label_lip_occlusion_depth, label_tab_style, front_wall_flush_inset
         );
     } else if (part == "full") {
-        _lgb_finished(labeled_bin, infill_size, label_surface, column_weights);
+        _lgb_finished(labeled_bin, infill_size, label_surface, column_weights, label_tab_style, front_wall_flush_inset);
     } else if (part == "preview") {
         color("#e5e5e5")
         _lgb_body(
@@ -103,7 +107,7 @@ module labeled_gridfinity_bin(
             label_lines, compartment_label_lines, column_weights, label_font,
             label_text_depth, label_area_width, label_area_height,
             label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-            label_lip_occlusion_depth
+            label_lip_occlusion_depth, label_tab_style, front_wall_flush_inset
         );
         if (has_text)
         color("black")
@@ -112,7 +116,7 @@ module labeled_gridfinity_bin(
             label_lines, compartment_label_lines, column_weights, label_font,
             label_text_depth, label_area_width, label_area_height,
             label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-            label_lip_occlusion_depth
+            label_lip_occlusion_depth, label_tab_style, front_wall_flush_inset
         );
     } else {
         assert(false, str("Unknown part: ", part));
@@ -124,17 +128,17 @@ module _lgb_body(
     label_lines, compartment_label_lines, column_weights, label_font,
     label_text_depth, label_area_width, label_area_height,
     label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-    label_lip_occlusion_depth
+    label_lip_occlusion_depth, label_tab_style, front_wall_flush_inset
 ) {
     difference() {
-        _lgb_finished(labeled_bin, infill_size, label_surface, column_weights);
+        _lgb_finished(labeled_bin, infill_size, label_surface, column_weights, label_tab_style, front_wall_flush_inset);
         if (_lgb_has_any_text(label_lines, compartment_label_lines, column_weights))
         _lgb_text_inserts(
             labeled_bin, infill_size, pocket_top_z, label_surface,
             label_lines, compartment_label_lines, column_weights, label_font,
             label_text_depth, label_area_width, label_area_height,
             label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-            label_lip_occlusion_depth
+            label_lip_occlusion_depth, label_tab_style, front_wall_flush_inset
         );
     }
 }
@@ -144,10 +148,10 @@ module _lgb_text_inserts(
     label_lines, compartment_label_lines, column_weights, label_font,
     label_text_depth, label_area_width, label_area_height,
     label_char_width_ratio, label_line_spacing, label_tab_depth_margin,
-    label_lip_occlusion_depth
+    label_lip_occlusion_depth, label_tab_style, front_wall_flush_inset
 ) {
     intersection() {
-        _lgb_finished(labeled_bin, infill_size, label_surface, column_weights);
+        _lgb_finished(labeled_bin, infill_size, label_surface, column_weights, label_tab_style, front_wall_flush_inset);
         _lgb_all_text_raw(
             infill_size, pocket_top_z, label_lines, compartment_label_lines, column_weights, label_font,
             label_text_depth, label_area_width, label_area_height,
@@ -157,23 +161,22 @@ module _lgb_text_inserts(
     }
 }
 
-module _lgb_finished(labeled_bin, infill_size, label_surface = true, column_weights = []) {
+module _lgb_finished(labeled_bin, infill_size, label_surface = true, column_weights = [], label_tab_style = 0, front_wall_flush_inset = 0) {
     bin_render(labeled_bin) {
-        _lgb_compartment_cutters(infill_size, label_surface, column_weights);
+        _lgb_compartment_cutters(infill_size, label_surface, column_weights, label_tab_style, front_wall_flush_inset);
     }
 }
 
-module _lgb_compartment_cutters(infill_size, label_surface, column_weights) {
+module _lgb_compartment_cutters(infill_size, label_surface, column_weights, label_tab_style, front_wall_flush_inset) {
     column_count = _lgb_column_count(column_weights);
     for (i = [0 : column_count - 1]) {
-        comp_size = _lgb_compartment_size(infill_size, column_weights, i);
-        comp_center = _lgb_compartment_center(infill_size, column_weights, i);
+        comp_size = _lgb_compartment_size(infill_size, column_weights, i, front_wall_flush_inset);
+        comp_center = _lgb_compartment_center(infill_size, column_weights, i, front_wall_flush_inset);
         translate([comp_center.x, comp_center.y, 0])
-        compartment_cutter(
+        cut_compartment_auto(
             size_mm = comp_size,
-            scoop_percent = 1,
-            tab_width = label_surface ? min(TAB_WIDTH_NOMINAL, comp_size.x) : 0,
-            tab_angle = 90
+            style_tab = label_surface ? label_tab_style : 5,
+            scoop_percent = 1
         );
     }
 }
@@ -257,19 +260,19 @@ function _lgb_compartment_left(infill_size, column_weights, i) =
     let(weights = _lgb_weights(column_weights))
     -infill_size.x / 2 + infill_size.x * _lgb_prefix_sum(weights, i) / _lgb_sum(weights);
 
-function _lgb_compartment_center(infill_size, column_weights, i) =
+function _lgb_compartment_center(infill_size, column_weights, i, front_wall_flush_inset = 0) =
     let(alloc_width = _lgb_compartment_alloc_width(infill_size, column_weights, i))
     [
         _lgb_compartment_left(infill_size, column_weights, i) + alloc_width / 2,
-        0
+        front_wall_flush_inset / 2
     ];
 
-function _lgb_compartment_size(infill_size, column_weights, i) =
+function _lgb_compartment_size(infill_size, column_weights, i, front_wall_flush_inset = 0) =
     let(column_count = _lgb_column_count(column_weights))
     let(divider_allowance = column_count > 1 ? d_div / 2 : 0)
     [
         _lgb_compartment_alloc_width(infill_size, column_weights, i) - divider_allowance,
-        infill_size.y - divider_allowance,
+        infill_size.y - divider_allowance - front_wall_flush_inset,
         infill_size.z
     ];
 
@@ -340,5 +343,6 @@ labeled_gridfinity_bin(
     gridz = gridz,
     include_lip = include_lip,
     label_surface = label_surface,
-    magnet_holes = magnet_holes
+    magnet_holes = magnet_holes,
+    flush_front_wall = flush_front_wall
 );
