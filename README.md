@@ -1,8 +1,8 @@
 # STOP!
 
-This is a personal fork my own hacking - you are absolutely free to use it if it interests you, but it's not really meant to be a public project. 
+This is a personal fork for my own hacking - you are absolutely free to use it if it interests you, but it's not really meant to be a public project. That said, I am releasing my changes with the same MIT license terms as the original project, so you are free to use it, fork it, merge it back to the original project, whatever.
 
-The interesting work is not on main, but on the codex_bin_automation branch, where I have been messing around with OpenAI's codex and vibe-coding some useful (to me) modifications to how gridfinity bins are generated. This is **100% AI-generated code**, because that was the whole point - to see whether it could generate useful, reusable code to solve a real problem for me. Some code is better than others. In case you are interested, this is what Codex and I have done:
+The interesting work is not on `main`, but on the `codex_bin_automation` branch, where I have been messing around with OpenAI's codex and vibe-coding some useful (to me) modifications to how gridfinity bins are generated. This is **100% AI-generated code**, because that was the whole point - to see whether it could generate useful, reusable code to solve a real problem for me. Some code is better than what I would have written, some is not. In case you are interested, this is what Codex and I have done:
 
 * Enhanced the bin-generation code to embed labels right into the bin (I have a Snapmaker U1 multi-nozzle printer, so I like embedding colored text directly into my prints)
 * added an option to tweak the shape of the front of the bin, because previously, when you added the top stacking lip, it would block the otherwise smooth curve at the front of the bin and make it hard to pull our snall parts like screws washers.
