@@ -4,19 +4,24 @@ This is a personal fork for my own hacking - you are absolutely free to use it i
 
 The interesting work is not on `main`, but on the `codex_bin_automation` branch, where I have been messing around with OpenAI's codex and vibe-coding some useful (to me) modifications to how gridfinity bins are generated. This is **100% AI-generated code**, because that was the whole point - to see whether it could generate useful, reusable code to solve a real problem for me. Some code is better than what I would have written, some is not. In case you are interested, this is what Codex and I have done:
 
-* Enhanced the bin-generation code to embed labels right into the bin (I have a Snapmaker U1 multi-nozzle printer, so I like embedding colored text directly into my prints)
+* Enhanced the bin-generation code to embed **text labels** right into the bin (I have a Snapmaker U1 multi-nozzle printer, so I like embedding colored text directly into my prints)
 * added an option to tweak the shape of the front of the bin, because previously, when you added the top stacking lip, it would block the otherwise smooth curve at the front of the bin and make it hard to pull our snall parts like screws washers.
 * scripts to take a json description of the bins you want to make and pipeline from json description to .3mf file with one or more labeled bins, ready to slice and print.
 
 Here's an example prompt: In its current state, I can ask Codex to: 
 
 ```
-Make me a pair of gridfinity bins for my M3 hardware.
-I need a 1x3x4U bin partitioned into 5 equal parts, labeled "M3x{4,5,6,8,10}",
-and another 1x3x4U bin partitioned 30/70, where the left bin is "M3x14" and the right bin is "M3x30"
+Make me a few gridfinity bins for my M4 hardware.
+I need a 1x3x4U bin partitioned into 4 equal parts, labeled "M4x{6,8,12,16}";
+another 1x3x4U bin partitioned equally in 3 parts, for the M4x20,25, and 30 parts;
+and a third bin, same size, in 3 equal parts, labeled "Washers","Nuts", and "Split\nWashers"
 ```
 
-.. and it does the right thing, generating a single .3MF file with two ready-to-print, multi-material correctly-labeled bins. The model shows white bins with black text, but you can, of course, swap in whatever filaments you want.
+.. and it does the right thing, generating a single .3MF file with two ready-to-print, multi-material correctly-labeled bins. The model shows white bins with black text, but you can, of course, swap in whatever filaments you want. (See generated file, in slicer, after auto-arranging the models)
+
+[<img src="./images/codex_bin_automation_sample.png" width="640">]()
+
+Note that you are not limited to equal-size bins, just like the original library. I could have asked for "3 bins, with a 25/25/50 split, labeled blah, blah, blah" - also note that the text handling automatically scales the font up or down to make text fit in the available label space, it handles multiple lines of text, and it tries to keep decent-looking margins.
 
 Feel free to make suggestions, please don't be offended if I don't respond or don't implement your feature requests or accept pull requests - this is not my life, it's a 1% free-time project that will probably be abandoned in a year. If it's useful to you, have at it!
 
